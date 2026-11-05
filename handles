@@ -1,0 +1,137 @@
+import os
+from telebot import TeleBot, types
+from config import BOT_TOKEN, VAULT_DIR
+from database import register_user_face, is_face_registered, save_vault_image, get_vault_images
+from face_verifier import save_user_reference_face, verify_face
+from music_search import search_music
+
+bot = TeleBot(BOT_TOKEN)
+
+USER_STATES = {}
+
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🎵 Qo'shiq qidirish", "🔒 Rasmlar Ombori (Vault)")
+    markup.add("👤 Face ID Sozlash")
+
+    text = (
+        f"Xush kelibsiz, {message.from_user.first_name}!\n\n"
+        "📌 **Sizning ma'lumotlaringiz:**\n"
+        f"🆔 **Chat ID:** `{message.chat.id}`\n"
+        f"👤 **User ID:** `{message.from_user.id}`\n\n"
+        "Kerakli bo'limni tanlang:"
+    )
+    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=markup)
+
+@bot.message_handler(func=lambda msg: msg.text == "🎵 Qo'shiq qidirish")
+def ask_music_query(message):
+    USER_STATES[message.chat.id] = 'WAITING_MUSIC_QUERY'
+    bot.send_message(message.chat.id, "🔍 Qo'shiq nomini yoki undan biror bir so'zni yozing:")
+
+@bot.message_handler(func=lambda msg: msg.text == "👤 Face ID Sozlash")
+def setup_face_id(message):
+    USER_STATES[message.chat.id] = 'WAITING_REGISTER_FACE'
+    bot.send_message(message.chat.id, "📸 Face ID ni sozlash uchun yuzingiz aniq ko'ringan rasmingizni yuboring:")
+
+@bot.message_handler(func=lambda msg: msg.text == "🔒 Rasmlar Ombori (Vault)")
+def access_vault(message):
+    user_id = message.from_user.id
+    if not is_face_registered(user_id):
+        bot.send_message(message.chat.id, "⚠️ Rasmlar omboridan foydalanish uchun avval '👤 Face ID Sozlash' tugmasi orqali yuzingizni ro'yxatdan o'tkazing!")
+        return
+
+    USER_STATES[message.chat.id] = 'WAITING_VERIFY_FACE'
+    bot.send_message(message.chat.id, "🔐 **Qulfni ochish uchun:** Hozir yuzingizni kameraga olib, rasm yuboring (Face ID verification):")
+
+@bot.message_handler(content_types=['photo'])
+def handle_photos(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    state = USER_STATES.get(chat_id)
+
+    if state == 'WAITING_REGISTER_FACE':
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        temp_path = f"temp_reg_{user_id}.jpg"
+        
+        with open(temp_path, 'wb') as f:
+            f.write(downloaded)
+
+        if save_user_reference_face(user_id, temp_path):
+            register_user_face(user_id)
+            bot.send_message(chat_id, "✅ Face ID muvaffaqiyatli sozlandi! Endi maxfiy omboringizdan foydalanishingiz mumkin.")
+        else:
+            bot.send_message(chat_id, "❌ Rasmda yuz aniqlanmadi. Iltimos, yuzingiz aniq tushgan rasmni qayta yuboring.")
+        
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        USER_STATES[chat_id] = None
+
+    elif state == 'WAITING_VERIFY_FACE':
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        temp_path = f"temp_ver_{user_id}.jpg"
+        
+        with open(temp_path, 'wb') as f:
+            f.write(downloaded)
+
+        if verify_face(user_id, temp_path):
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("➕ Yangi rasm qulflash", callback_data="add_vault"))
+            markup.add(types.InlineKeyboardButton("🖼 Qulflangan rasmlarni ko'rish", callback_data="view_vault"))
+            bot.send_message(chat_id, "🔓 **Face ID tasdiqlandi!** Maxfiy omborga xush kelibsiz.", reply_markup=markup)
+        else:
+            bot.send_message(chat_id, "🚫 **Face ID mos kelmadi!** Kirish rad etildi.")
+        
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        USER_STATES[chat_id] = None
+
+    elif state == 'WAITING_VAULT_UPLOAD':
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        
+        save_path = os.path.join(VAULT_DIR, f"vault_{user_id}_{message.photo[-1].file_id}.jpg")
+        with open(save_path, 'wb') as f:
+            f.write(downloaded)
+
+        save_vault_image(user_id, save_path)
+        bot.send_message(chat_id, "🔒 Rasm muvaffaqiyatli qulflandi va xavfsiz omborga saqlandi!")
+        USER_STATES[chat_id] = None
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    if call.data == "add_vault":
+        USER_STATES[chat_id] = 'WAITING_VAULT_UPLOAD'
+        bot.send_message(chat_id, "📥 Omborga qulflamoqchi bo'lgan rasmingizni yuboring:")
+
+    elif call.data == "view_vault":
+        images = get_vault_images(user_id)
+        if not images:
+            bot.send_message(chat_id, "📭 Omboringizda hali hech qanday rasm yo'q.")
+            return
+
+        bot.send_message(chat_id, f"📦 Sizda {len(images)} ta qulflangan rasm bor:")
+        for img_id, path in images:
+            if os.path.exists(path):
+                with open(path, 'rb') as photo:
+                    bot.send_photo(chat_id, photo)
+
+@bot.message_handler(func=lambda msg: USER_STATES.get(msg.chat.id) == 'WAITING_MUSIC_QUERY')
+def process_music_search(message):
+    query = message.text
+    bot.send_message(message.chat.id, f"🔍 **'{query}'** bo'yicha qo'shiqlar qidirilmoqda...")
+    
+    results = search_music(query)
+    if not results:
+        bot.send_message(message.chat.id, "😔 Hech qanday qo'shiq topilmadi. Qayta urinib ko'ring.")
+    else:
+        for track in results:
+            caption = f"🎵 **{track['title']}**\n👤 Ijrochi: {track['artist']}\n🔗 [Toliq eshitish]({track['link']})"
+            bot.send_audio(message.chat.id, track['preview'], caption=caption, parse_mode="Markdown")
+    
+    USER_STATES[message.chat.id] = None
