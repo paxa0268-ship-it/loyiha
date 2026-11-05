@@ -1,0 +1,15 @@
+# Telegram Music Vault & Face ID Bot
+
+## Fayllar tuzilishi
+- `config.py`: Bot sozlamalari va papkalar.
+- `database.py`: SQLite ma'lumotlar bazasi mantiqi.
+- `face_verifier.py`: OpenCV orqali yuzni tekshirish.
+- `music_search.py`: Qo'shiq qidiruv moduli.
+- `handlers.py`: Telegram tugmalari va xabarlar ishlovchisi.
+- `main.py`: Botni ishga tushiruvchi asosiy fayl.
+- `requirements.txt`: Kerakli Python kutubxonalari.
+
+## Ishga tushirish
+1. Kutubxonalarni o'rnating: `pip install -r requirements.txt`
+2. `config.py` fayliga Bot Tokeningizni kiriting.
+3. Botni ishga tushiring: `python main.py`
