@@ -1,0 +1,9 @@
+from database import init_db
+from handlers import bot
+
+if __name__ == '__main__':
+    print("🚀 Ma'lumotlar bazasi tayyorlanmoqda...")
+    init_db()
+    
+    print("🤖 Telegram bot muvaffaqiyatli ishga tushdi!")
+    bot.infinity_polling()
