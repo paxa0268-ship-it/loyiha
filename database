@@ -1,0 +1,59 @@
+import sqlite3
+from config import DB_NAME
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # Foydalanuvchilar jadvali
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            face_registered INTEGER DEFAULT 0,
+            pin_code TEXT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Qulflangan rasmlar ombori
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vault (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            file_path TEXT,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+def register_user_face(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR REPLACE INTO users (user_id, face_registered) VALUES (?, 1)', (user_id,))
+    conn.commit()
+    conn.close()
+
+def is_face_registered(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('SELECT face_registered FROM users WHERE user_id = ?', (user_id,))
+    res = cursor.fetchone()
+    conn.close()
+    return res and res[0] == 1
+
+def save_vault_image(user_id, file_path):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO vault (user_id, file_path) VALUES (?, ?)', (user_id, file_path))
+    conn.commit()
+    conn.close()
+
+def get_vault_images(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, file_path FROM vault WHERE user_id = ?', (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
