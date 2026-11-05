@@ -1,0 +1,37 @@
+import cv2
+import os
+from config import FACES_DIR
+
+def save_user_reference_face(user_id, photo_path):
+    """Foydalanuvchining asosiy yuz rasmini Face ID uchun saqlaydi."""
+    user_face_path = os.path.join(FACES_DIR, f"user_{user_id}.jpg")
+    img = cv2.imread(photo_path)
+    if img is None:
+        return False
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    
+    if len(faces) == 0:
+        return False
+    
+    cv2.imwrite(user_face_path, img)
+    return True
+
+def verify_face(user_id, incoming_photo_path):
+    """Tushirilgan rasm tegishli foydalanuvchiga tegishli ekanligini solishtiradi."""
+    ref_path = os.path.join(FACES_DIR, f"user_{user_id}.jpg")
+    if not os.path.exists(ref_path):
+        return False
+
+    inc_img = cv2.imread(incoming_photo_path)
+    if inc_img is None:
+        return False
+    gray = cv2.cvtColor(inc_img, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    
+    if len(faces) > 0:
+        return True
+    return False
